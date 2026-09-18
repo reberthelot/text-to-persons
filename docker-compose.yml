@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  # Microservice d'extraction NER (calcul / LLM)
+  extractor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: extractor
+    container_name: person-extractor
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  # Service Frontend & Benchmark (UI / Proxy)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+    container_name: text-to-persons-ui
+    ports:
+      - "8080:8080"
+    environment:
+      # Adresse réseau Docker interne pour joindre le microservice
+      - PERSON_SERVICE_URL=http://extractor:8000
+    depends_on:
+      - extractor
+    restart: unless-stopped
+

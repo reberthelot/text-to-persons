@@ -43,6 +43,7 @@ text-to-persons/
 │   ├── test_normalization.py        # Unit tests for text normalization
 │   ├── test_metrics.py              # Unit tests for operational metrics tracker
 │   └── test_api.py                  # Integration tests for FastAPI endpoints
+├── main.py                          # Shortcut for the entry point
 ├── requirements.txt                 # Pinned runtime and development dependencies
 └── README.md                        # Documentation and usage guide
 ```
@@ -53,13 +54,6 @@ text-to-persons/
 
 ### 1. Prerequisites & Environment
 
-Activate your virtual environment (`MLvenv` is recommended):
-
-```powershell
-MLvenv
-# Or using direct path:
-# & "C:\Users\remib\Python-Environments\MLvenv\Scripts\Activate.ps1"
-```
 
 Install the dependencies:
 
@@ -82,13 +76,13 @@ The application communicates with the independently developed person extraction 
 Start the web server using Uvicorn:
 
 ```bash
-uvicorn src.app.main:app --port 8080 --reload
+uvicorn main:app --port 8080 --reload
 ```
 
 Or run directly with Python:
 
 ```bash
-python -m src.app.main
+python -m main
 ```
 
 Open your browser and navigate to:
