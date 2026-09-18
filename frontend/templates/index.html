@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Text → Persons (Demo Frontend)</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='css/style.css') }}"/>
+</head>
+<body>
+  <header>
+    <h1>Text → Persons (Demo Frontend)</h1>
+    <div class="sub">
+      Calls <code>{{ service_base_url }}{{ service_endpoint }}</code> • Timeout: <code>{{ "%.1f"|format(service_timeout_seconds) }}s</code>
+    </div>
+  </header>
+
+  <main>
+    <div class="row">
+      <section class="card">
+        <h2>Try it</h2>
+        <textarea id="textInput">Einstein and von Neumann meet each other.</textarea>
+        <div style="display:flex; gap:10px; flex-wrap: wrap; margin-top: 10px;">
+          <button id="btnExtract">Extract persons</button>
+          <button id="btnClear" class="secondary">Clear</button>
+        </div>
+        <div class="hint">
+          Tip: The backend service is built independently (e.g., student's container).
+          If this page cannot connect, check that the service is running and reachable.
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Result</h2>
+        <div id="statusLine" class="hint">No request yet.</div>
+        <div style="margin-top: 10px;">
+          <div id="personsPills"></div>
+          <pre id="rawJson">{}</pre>
+        </div>
+      </section>
+    </div>
+
+    <div class="grid2">
+      <section class="card">
+        <h2>Small test suite</h2>
+        <div class="hint">
+          Runs the built-in dataset ({{ dataset_size }} examples) by calling the external service once per example.
+          Comparison is order-insensitive.
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap: wrap; margin-top: 10px;">
+          <button id="btnRunTests">Run tests</button>
+          <button id="btnLoadExample" class="secondary">Load random test text</button>
+        </div>
+        <div style="margin-top: 10px;">
+          <pre id="testOutput">Press “Run tests”.</pre>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Operational metrics</h2>
+        <div class="hint">Process-local counters + latency stats (ms).</div>
+        <div style="margin-top: 10px;">
+          <pre id="metricsOutput">Loading…</pre>
+        </div>
+        <div class="hint" style="margin-top: 10px;">
+          Note: If you run multiple workers (e.g., <code>--workers 4</code>),
+          each worker keeps its own metrics.
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>Service configuration</h2>
+      <div class="hint">
+        Change these via environment variables when starting this frontend:
+        <ul>
+          <li><code>PERSON_SERVICE_URL</code> (current: <code>{{ service_base_url }}</code>)</li>
+          <li><code>PERSON_SERVICE_ENDPOINT</code> (current: <code>{{ service_endpoint }}</code>)</li>
+          <li><code>PERSON_SERVICE_TIMEOUT_SECONDS</code> (current: <code>{{ service_timeout_seconds }}</code>)</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Minimal JS + modular DTU CSS styling. If you need CORS, prefer calling the service through this frontend’s
+    <code>/api/*</code> endpoints (already same-origin).
+  </footer>
+
+  {# JSON dataset payload for random example selection #}
+  <script id="testDatasetData" type="application/json">
+    {{ test_dataset_texts | tojson }}
+  </script>
+  <script src="{{ url_for('static', path='js/app.js') }}"></script>
+</body>
+</html>
+
