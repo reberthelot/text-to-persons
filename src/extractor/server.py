@@ -20,17 +20,6 @@ app = FastAPI(
 extractor = ExternalLLMExtractor()
 
 
-@app.get("/", summary="Health Check")
-async def root() -> dict[str, str]:
-    """Basic health check and discovery endpoint."""
-    return {
-        "status": "healthy",
-        "service": "Person Extraction Microservice",
-        "docs": "/docs",
-        "endpoint": "/v1/extract-persons",
-    }
-
-
 @app.post(
     "/v1/extract-persons",
     response_model=ExtractPersonsResponse,

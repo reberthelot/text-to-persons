@@ -34,6 +34,7 @@ class Settings:
     service_base_url: str = os.environ.get("PERSON_SERVICE_URL", "http://localhost:8000").rstrip("/")
     service_endpoint: str = os.environ.get("PERSON_SERVICE_ENDPOINT", "/v1/extract-persons")
     service_timeout_seconds: float = float(os.environ.get("PERSON_SERVICE_TIMEOUT_SECONDS", "10.0"))
+    service_timeout_seconds: float = float(os.environ.get("PERSON_SERVICE_TIMEOUT_SECONDS", "60.0"))
 
     # Project paths
     base_dir: Path = Path(__file__).resolve().parent.parent.parent

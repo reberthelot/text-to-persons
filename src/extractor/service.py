@@ -17,11 +17,19 @@ class ExternalLLMExtractor:
     def __init__(self) -> None:
         self.api_key = extractor_settings.llm_api_key
         self.model = extractor_settings.llm_model
-        base_url = extractor_settings.llm_base_url or "https://api.openai.com/v1"
+        base_url = extractor_settings.llm_base_url or "https://api.campusai.compute.dtu.dk/v1"
         self.endpoint = f"{base_url.rstrip('/')}/chat/completions"
+        self.samples = extractor_settings.self_consistency_samples
+        self.temperature = extractor_settings.llm_temperature if self.samples > 1 else 0.0
+        self.threshold = extractor_settings.consistency_threshold
+        self.timeout = extractor_settings.request_timeout_seconds
 
     async def extract(self, text: str) -> List[str]:
         """Extract person entities from text via the external LLM API.
+
+        Uses self-consistency (sampling multiple stochastic predictions and majority
+        voting) together with an OpenAI-compatible JSON Schema response_format to
+        ensure structured output integrity.
 
         Parameters
         ----------
@@ -31,12 +39,11 @@ class ExternalLLMExtractor:
         Returns
         -------
         List[str]
-            A list of detected person names.
+            A list of detected person names that passed majority voting.
         """
-        # If no API key is provided, return a clear exception or fallback
         if not self.api_key:
             raise RuntimeError(
-                "OPENAI_API_KEY is not set. Please provide it in your .env file or environment."
+                "CAMPUSAI_API_KEY is not set. Please provide it in your .env file or environment."
             )
 
         headers = {
@@ -44,26 +51,79 @@ class ExternalLLMExtractor:
             "Content-Type": "application/json",
         }
 
-        # Request structured JSON format adhering to ExtractPersonsResponse
+        # Request strictly structured JSON adhering to ExtractPersonsResponse schema
         payload = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
                 {"role": "user", "content": f"Text:\n{text}"},
             ],
-            "response_format": {"type": "json_object"},
-            "temperature": 0.0,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "extract_persons_response",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "persons": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Unique list of person names extracted from the text."
+                            }
+                        },
+                        "required": ["persons"],
+                        "additionalProperties": False
+                    }
+                }
+            },
+            "n": self.samples,
+            "temperature": self.temperature,
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(self.endpoint, headers=headers, json=payload)
             resp.raise_for_status()
 
             data = resp.json()
-            raw_content = data["choices"][0]["message"]["content"]
-            parsed = json.loads(raw_content)
+            choices = data.get("choices", [])
+            if not choices:
+                return []
 
-            # Validate against our Pydantic schema
-            response_model = ExtractPersonsResponse.model_validate(parsed)
-            return response_model.persons
+            # If only 1 sample was generated, parse directly
+            if len(choices) == 1:
+                raw_content = choices[0]["message"]["content"]
+                parsed = json.loads(raw_content)
+                response_model = ExtractPersonsResponse.model_validate(parsed)
+                return response_model.persons
 
+            # Aggregate self-consistency predictions
+            name_counts: dict[str, int] = {}
+            canonical_names: dict[str, str] = {}
+
+            for choice in choices:
+                raw_content = choice.get("message", {}).get("content", "")
+                try:
+                    parsed = json.loads(raw_content)
+                    validated = ExtractPersonsResponse.model_validate(parsed)
+                    unique_sample_names = {name.strip() for name in validated.persons if name.strip()}
+                    for name in unique_sample_names:
+                        key = name.lower()
+                        name_counts[key] = name_counts.get(key, 0) + 1
+                        if key not in canonical_names:
+                            canonical_names[key] = name
+                except (json.JSONDecodeError, Exception):
+                    continue
+
+            # Majority voting
+            min_votes = int(len(choices) * self.threshold)
+            if min_votes < 1:
+                min_votes = 1
+
+            selected_persons: List[str] = [
+                canonical_names[key]
+                for key, count in name_counts.items()
+                if count >= min_votes
+            ]
+
+            return selected_persons

@@ -28,9 +28,13 @@ class ExtractorSettings:
     """
 
     llm_api_key: str = os.environ.get("CAMPUSAI_API_KEY", "")
-    llm_model: str = os.environ.get("CAMPUSAI_MODEL", "gpt-4o-mini")
-    llm_embed_model: str = os.environ.get("CAMPUSAI_EMBED_MODEL", "gpt-4o-mini")
+    llm_model: str = os.environ.get("CAMPUSAI_MODEL", "google/gemma-4-26b-a4b")
+    llm_embed_model: str = os.environ.get("CAMPUSAI_EMBED_MODEL", "cai-embedding")
     llm_base_url: str | None = os.environ.get("CAMPUSAI_API_URL", None)
+    llm_temperature: float = float(os.environ.get("EXTRACTOR_TEMPERATURE", "0.7"))
+    self_consistency_samples: int = int(os.environ.get("SELF_CONSISTENCY_SAMPLES", "8"))
+    consistency_threshold: float = float(os.environ.get("CONSISTENCY_THRESHOLD", "0.5"))
+    request_timeout_seconds: float = float(os.environ.get("EXTRACTOR_TIMEOUT_SECONDS", "60.0"))
 
 
 extractor_settings = ExtractorSettings()
