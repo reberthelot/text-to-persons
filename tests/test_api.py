@@ -1,15 +1,22 @@
-"""Integration tests for FastAPI frontend and API routes."""
+"""Integration tests for FastAPI frontend and API routes.
+
+The ``client`` fixture (see conftest.py) runs the application lifespan, which
+creates the pooled HTTP client consumed by the proxy routes.
+"""
 
 from unittest.mock import AsyncMock, patch
-from fastapi.testclient import TestClient
 
-from src.app.main import app
 from src.app.models import ExtractPersonsResponse
 
-client = TestClient(app)
+
+def test_get_health(client) -> None:
+    """The /health liveness probe must answer 200 with no side effects."""
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
 
 
-def test_get_index_page() -> None:
+def test_get_index_page(client) -> None:
     """The root endpoint should render HTML with title and static links."""
     response = client.get("/")
     assert response.status_code == 200
@@ -19,7 +26,7 @@ def test_get_index_page() -> None:
     assert "/static/js/app.js" in response.text
 
 
-def test_static_assets() -> None:
+def test_static_assets(client) -> None:
     """Static assets CSS and JS must be served properly."""
     css_res = client.get("/static/css/style.css")
     assert css_res.status_code == 200
@@ -30,7 +37,7 @@ def test_static_assets() -> None:
     assert "fetchJson" in js_res.text
 
 
-def test_get_metrics_endpoint() -> None:
+def test_get_metrics_endpoint(client) -> None:
     """The /api/metrics endpoint returns operational metrics."""
     response = client.get("/api/metrics")
     assert response.status_code == 200
@@ -39,14 +46,14 @@ def test_get_metrics_endpoint() -> None:
     assert "service_base_url" in data
 
 
-def test_extract_persons_validation_error() -> None:
+def test_extract_persons_validation_error(client) -> None:
     """Missing or empty text input raises 422 validation error."""
     response = client.post("/api/extract-persons", json={"text": ""})
     assert response.status_code == 422
 
 
 @patch("src.app.routes.api.call_person_service", new_callable=AsyncMock)
-def test_extract_persons_mocked_success(mock_call: AsyncMock) -> None:
+def test_extract_persons_mocked_success(mock_call: AsyncMock, client) -> None:
     """Successful external service call proxies the persons list and latency."""
     mock_call.return_value = (ExtractPersonsResponse(persons=["Albert Einstein"]), 42.5)
 

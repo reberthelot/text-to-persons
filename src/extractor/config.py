@@ -1,41 +1,95 @@
 """Configuration settings for the Person Extractor Service.
 
-Loads settings from environment variables and supports .env files.
+Settings are loaded from environment variables and an optional ``.env`` file
+at the project root, handled natively by ``pydantic-settings`` (replaces the
+former manual ``load_dotenv()`` + ``os.environ.get`` dataclass). Legacy env
+names are preserved through ``AliasChoices`` (``CAMPUSAI_*``,
+``EXTRACTOR_*``, ``SELF_CONSISTENCY_SAMPLES``, ``CONSISTENCY_THRESHOLD``).
 """
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
-from dotenv import load_dotenv
-
-# Load variables from .env file into os.environ if present
-load_dotenv()
+from pydantic import AliasChoices, Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-@dataclass(frozen=True)
-class ExtractorSettings:
+class ExtractorSettings(BaseSettings):
     """Extractor service settings.
 
     Parameters
     ----------
-    llm_api_key : str
-        API key for the external LLM provider (e.g. OpenAI / LiteLLM / Mistral).
+    llm_api_key : SecretStr
+        API key for the external LLM provider. Wrapped in ``SecretStr`` so it
+        is masked in logs, tracebacks and OpenAPI/repr output.
     llm_model : str
         Name of the model to use for entity extraction.
     llm_base_url : str | None
         Optional custom base URL for OpenAI-compatible APIs (e.g. local Ollama, vLLM, Groq).
+    llm_temperature : float
+        Sampling temperature for self-consistency runs (ignored when n == 1).
+    self_consistency_samples : int
+        Number of stochastic completions (n) used for majority voting.
+    consistency_threshold : float
+        Minimum fraction of samples an entity must appear in to be kept.
+    request_timeout_seconds : float
+        HTTP timeout for a single LLM call.
     """
 
-    llm_api_key: str = os.environ.get("CAMPUSAI_API_KEY", "")
-    llm_model: str = os.environ.get("CAMPUSAI_MODEL", "google/gemma-4-26b-a4b")
-    llm_embed_model: str = os.environ.get("CAMPUSAI_EMBED_MODEL", "cai-embedding")
-    llm_base_url: str | None = os.environ.get("CAMPUSAI_API_URL", None)
-    llm_temperature: float = float(os.environ.get("EXTRACTOR_TEMPERATURE", "0.7"))
-    self_consistency_samples: int = int(os.environ.get("SELF_CONSISTENCY_SAMPLES", "8"))
-    consistency_threshold: float = float(os.environ.get("CONSISTENCY_THRESHOLD", "0.5"))
-    request_timeout_seconds: float = float(os.environ.get("EXTRACTOR_TIMEOUT_SECONDS", "60.0"))
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",  # ignore unrelated container env vars (PYTHONUNBUFFERED, ...)
+    )
+
+    llm_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("CAMPUSAI_API_KEY", "llm_api_key"),
+    )
+    llm_model: str = Field(
+        default="google/gemma-4-26b-a4b",
+        validation_alias=AliasChoices("CAMPUSAI_MODEL", "llm_model"),
+    )
+    llm_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("CAMPUSAI_API_URL", "llm_base_url"),
+    )
+    llm_temperature: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=2.0,
+        validation_alias=AliasChoices("EXTRACTOR_TEMPERATURE", "llm_temperature"),
+    )
+    self_consistency_samples: int = Field(
+        default=8,
+        ge=1,
+        validation_alias=AliasChoices(
+            "SELF_CONSISTENCY_SAMPLES", "self_consistency_samples"
+        ),
+    )
+    consistency_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        validation_alias=AliasChoices("CONSISTENCY_THRESHOLD", "consistency_threshold"),
+    )
+    request_timeout_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        validation_alias=AliasChoices(
+            "EXTRACTOR_TIMEOUT_SECONDS", "request_timeout_seconds"
+        ),
+    )
+    #: Root logging level (env ``LOG_LEVEL``), e.g. DEBUG, INFO, WARNING.
+    log_level: str = "INFO"
+
+    @field_validator("log_level", mode="after")
+    @classmethod
+    def _normalize_log_level(cls, value: str) -> str:
+        """Accept any case (``debug`` -> ``DEBUG``) and reject unknown levels."""
+        level = value.upper()
+        if level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+            raise ValueError(f"unknown log level: {value!r}")
+        return level
 
 
 extractor_settings = ExtractorSettings()
-

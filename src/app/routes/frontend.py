@@ -13,6 +13,12 @@ router = APIRouter(tags=["Frontend"])
 templates = Jinja2Templates(directory=str(settings.template_dir))
 
 
+@router.get("/health")
+def health() -> dict[str, str]:
+    """Liveness probe for Docker HEALTHCHECK: no dependencies, no side effects."""
+    return {"status": "ok"}
+
+
 @router.get("/", response_class=HTMLResponse)
 async def get_index_page(request: Request) -> HTMLResponse:
     """Serve the demo UI dashboard.

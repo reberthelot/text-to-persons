@@ -105,6 +105,7 @@ Configuration values are managed via environment variables or a `.env` file at t
 | `EXTRACTOR_TEMPERATURE` | `0.7` | Sampling temperature for self-consistency |
 | `CONSISTENCY_THRESHOLD` | `0.5` | Minimum vote ratio required to keep an entity |
 | `EXTRACTOR_TIMEOUT_SECONDS` | `60.0` | HTTP request timeout for LLM calls |
+| `LOG_LEVEL` | `INFO` | Root log level (`DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL`, case-insensitive) |
 
 ### Frontend & Benchmark Settings (`src/app/config.py`)
 
@@ -113,6 +114,7 @@ Configuration values are managed via environment variables or a `.env` file at t
 | `PERSON_SERVICE_URL` | `http://localhost:8000` | Target URL of the extraction microservice |
 | `PERSON_SERVICE_ENDPOINT` | `/v1/extract-persons` | Endpoint path on the extraction service |
 | `PERSON_SERVICE_TIMEOUT_SECONDS` | `60.0` | Timeout for proxying extraction requests |
+| `LOG_LEVEL` | `INFO` | Root log level (case-insensitive) |
 
 ---
 
@@ -120,14 +122,14 @@ Configuration values are managed via environment variables or a `.env` file at t
 
 ### 1. Installation
 
-Install dependencies using Python 3.10+:
+Install dependencies using Python 3.11+ (Jinja2 for the frontend templates is a shared direct dependency of `requirements.txt`):
 
 ```bash
-# Core dependencies (microservice & shared runtime)
+# Core dependencies (microservice, shared runtime & frontend)
 pip install -r requirements.txt
 
-# Additional dependencies for frontend & test suite
-pip install -r requirements-frontend.txt
+# Only needed to run the test suite (dev group declared in pyproject.toml)
+pip install pytest
 ```
 
 ### 2. Running the Services
@@ -169,6 +171,8 @@ docker compose down
 
 The frontend will be available at `http://localhost:8080` and the extractor at `http://localhost:8000`.
 
+`compose.yaml` starts the extractor first and waits for its `/health` probe to turn **healthy** (`depends_on: condition: service_healthy`) before starting the frontend. Both containers run as a **non-root** user (`appuser`, uid 10001), expose `GET /health` for the Docker `HEALTHCHECK`, and use a **single uvicorn worker** on purpose (pooled HTTP clients, in-process metrics and benchmark state).
+
 #### Building and Running Images Individually
 
 If you prefer building and executing individual containers with standard Docker commands:
@@ -201,6 +205,13 @@ Execute the test suite with `pytest`:
 
 ```bash
 pytest -v
+```
+
+Dependencies are pinned with `uv` (`pyproject.toml` + `uv.lock`). After a dependency change, refresh the lock and the Docker build files:
+
+```bash
+uv lock
+uv export --no-hashes --no-dev -o requirements.txt
 ```
 
 ### Normalization Doctests

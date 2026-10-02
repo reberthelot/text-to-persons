@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from src.app.models import (
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api", tags=["API"])
     response_model=ExtractPersonsProxyResponse,
     summary="Extract person entities",
 )
-async def api_extract_persons(req: ExtractPersonsRequest) -> JSONResponse:
+async def api_extract_persons(req: ExtractPersonsRequest, request: Request) -> JSONResponse:
     """Proxy endpoint calling the external extraction service.
 
     Accepts text, dispatches it to the configured external web service,
@@ -36,13 +36,15 @@ async def api_extract_persons(req: ExtractPersonsRequest) -> JSONResponse:
     ----------
     req : ExtractPersonsRequest
         Request payload containing the input text.
+    request : Request
+        FastAPI request used to access the pooled HTTP client (lifespan state).
 
     Returns
     -------
     JSONResponse
         Dictionary containing 'persons' list and '_meta' latency information.
     """
-    resp, latency_ms = await call_person_service(req.text)
+    resp, latency_ms = await call_person_service(req.text, request.app.state.http_client)
     payload: Dict[str, Any] = {
         "persons": resp.persons,
         "_meta": {"latency_ms": latency_ms},
@@ -71,7 +73,7 @@ async def api_metrics() -> JSONResponse:
     response_model=TestSuiteResponse,
     summary="Run benchmark test suite",
 )
-async def api_run_tests() -> JSONResponse:
+async def api_run_tests(request: Request) -> JSONResponse:
     """Execute the built-in benchmark test dataset against the external service.
 
     Notes
@@ -87,13 +89,14 @@ async def api_run_tests() -> JSONResponse:
     """
     results: List[Dict[str, Any]] = []
     passed = 0
+    http_client = request.app.state.http_client
 
     for ex in TEST_DATASET:
         text = ex["text"]
         expected = normalize_person_list(list(ex["persons"]))
 
         try:
-            got_resp, latency_ms = await call_person_service(text)
+            got_resp, latency_ms = await call_person_service(text, http_client)
             got = normalize_person_list(got_resp.persons)
             is_match = sorted(got) == sorted(expected)
             if is_match:

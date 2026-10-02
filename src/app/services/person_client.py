@@ -13,7 +13,9 @@ from src.app.models import ExtractPersonsResponse
 from src.app.utils.metrics import METRICS
 
 
-async def call_person_service(text: str) -> Tuple[ExtractPersonsResponse, float]:
+async def call_person_service(
+    text: str, client: httpx.AsyncClient
+) -> Tuple[ExtractPersonsResponse, float]:
     """Call the external person-extraction Web service.
 
     Sends an asynchronous HTTP POST request with a JSON payload `{"text": text}`
@@ -24,6 +26,8 @@ async def call_person_service(text: str) -> Tuple[ExtractPersonsResponse, float]
     ----------
     text : str
         The input text string to analyze.
+    client : httpx.AsyncClient
+        Shared pooled client created by the application lifespan.
 
     Returns
     -------
@@ -37,53 +41,45 @@ async def call_person_service(text: str) -> Tuple[ExtractPersonsResponse, float]
     HTTPException
         If the external service is unreachable (502), times out (504), returns
         a non-2xx status (502), or returns invalid/malformed JSON (502).
-
-    Examples
-    --------
-    >>> import asyncio
-    >>> # Expects the external service to accept:
-    >>> # POST {settings.service_base_url}{settings.service_endpoint}
-    >>> # {"text": "Einstein and von Neumann meet each other."}
-    >>> # and respond with:
-    >>> # {"persons": ["Einstein", "von Neumann"]}
     """
     url = f"{settings.service_base_url}{settings.service_endpoint}"
     start = time.perf_counter()
 
     timeout = httpx.Timeout(settings.service_timeout_seconds)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        try:
-            resp = await client.post(url, json={"text": text})
-        except httpx.ConnectError as exc:
-            latency_ms = (time.perf_counter() - start) * 1000.0
-            METRICS.record(ok=False, latency_ms=latency_ms)
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    "Could not connect to the Web service.\n\n"
-                    f"Checked: {url}\n"
-                    "Typical fixes:\n"
-                    "• Start the container / service\n"
-                    "• Verify port mapping (e.g., -p 8000:8000)\n"
-                    "• If running remotely, check firewall / host\n\n"
-                    f"Technical detail: {type(exc).__name__}"
-                ),
-            ) from exc
-        except httpx.ReadTimeout as exc:
-            latency_ms = (time.perf_counter() - start) * 1000.0
-            METRICS.record(ok=False, latency_ms=latency_ms)
-            raise HTTPException(
-                status_code=504,
-                detail=(
-                    "The Web service did not respond before the timeout.\n\n"
-                    f"Timeout: {settings.service_timeout_seconds:.1f}s\n"
-                    f"Endpoint: {url}\n\n"
-                    "Typical fixes:\n"
-                    "• Increase PERSON_SERVICE_TIMEOUT_SECONDS\n"
-                    "• Make the service faster (e.g., smaller model / caching)\n"
-                    "• Check service logs for slow LLM calls"
-                ),
-            ) from exc
+    try:
+        resp = await client.post(url, json={"text": text}, timeout=timeout)
+    except httpx.TimeoutException as exc:
+        # Base class for ConnectTimeout / ReadTimeout / WriteTimeout / PoolTimeout.
+        latency_ms = (time.perf_counter() - start) * 1000.0
+        METRICS.record(ok=False, latency_ms=latency_ms)
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                "The Web service did not respond before the timeout.\n\n"
+                f"Timeout: {settings.service_timeout_seconds:.1f}s\n"
+                f"Endpoint: {url}\n\n"
+                "Typical fixes:\n"
+                "• Increase PERSON_SERVICE_TIMEOUT_SECONDS\n"
+                "• Make the service faster (e.g., smaller model / caching)\n"
+                "• Check service logs for slow LLM calls"
+            ),
+        ) from exc
+    except httpx.TransportError as exc:
+        # Base class for ConnectError, NetworkError, ProtocolError, ...
+        latency_ms = (time.perf_counter() - start) * 1000.0
+        METRICS.record(ok=False, latency_ms=latency_ms)
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Could not connect to the Web service.\n\n"
+                f"Checked: {url}\n"
+                "Typical fixes:\n"
+                "• Start the container / service\n"
+                "• Verify port mapping (e.g., -p 8000:8000)\n"
+                "• If running remotely, check firewall / host\n\n"
+                f"Technical detail: {type(exc).__name__}"
+            ),
+        ) from exc
 
     latency_ms = (time.perf_counter() - start) * 1000.0
 
@@ -133,4 +129,3 @@ async def call_person_service(text: str) -> Tuple[ExtractPersonsResponse, float]
     persons = [str(item) for item in data.get("persons", [])]
     METRICS.record(ok=True, latency_ms=latency_ms)
     return ExtractPersonsResponse(persons=persons), latency_ms
-

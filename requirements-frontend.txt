@@ -1,4 +1,0 @@
-# Extra dependencies required by the frontend service and its test suite
-jinja2>=3.1.0
-pytest>=8.0.0
-
