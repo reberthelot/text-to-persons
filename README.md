@@ -11,7 +11,7 @@ The repository includes both the frontend benchmark interface and the backend ex
 The project decouples the frontend benchmarking platform from the standalone person extraction microservice:
 
 ```text
-text-to-persons/
+03-text-to-persons/
 ├── frontend/
 │   ├── static/
 │   │   ├── css/
