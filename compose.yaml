@@ -1,0 +1,51 @@
+services:
+  # Extraction service (LLM)
+  extractor:
+    image: person-extractor
+    container_name: person-extractor
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: extractor
+    ports:
+      - 8000:8000
+    # CAMPUSAI_API_KEY & friends (never committed). Optional so the compose
+    # file still validates on machines without the local .env file.
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    # Single uvicorn worker on purpose: pooled HTTP client and extractor
+    # live on app.state and must not be shared across forked workers.
+
+  # Frontend & Benchmark Service (UI / Proxy)
+  frontend:
+    image: text-to-persons-ui
+    container_name: text-to-persons-ui
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: frontend
+    ports:
+      - 8080:8080
+    environment:
+      # Already the Dockerfile default; explicit to document the in-network
+      # wiring (compose DNS resolves the service name `extractor`).
+      PERSON_SERVICE_URL: http://extractor:8000
+    depends_on:
+      extractor:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    # Single uvicorn worker on purpose: in-process benchmark state and metrics.
